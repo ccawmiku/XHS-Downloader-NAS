@@ -66,6 +66,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cookie_secret_key": "xhs_cookie",
         "scroll_count": 40,
         "scroll_delay_ms": 1200,
+        "consecutive_downloaded_stop_count": 10,
         "target_timeout_ms": 45000,
         "extractor": "/app/liked_extractor.js",
         "auto_install_playwright": True,
@@ -1111,6 +1112,20 @@ def dedupe_notes(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def note_downloaded_before(conn: sqlite3.Connection, note: dict[str, Any]) -> bool:
+    note_id = note.get("note_id")
+    url = note.get("url")
+    row = conn.execute(
+        """
+        SELECT status FROM notes
+        WHERE note_id = ? OR url = ?
+        LIMIT 1
+        """,
+        (note_id, url),
+    ).fetchone()
+    return bool(row and row["status"] == "downloaded")
+
+
 def post_download(api_url: str, url: str, *, skip: bool, cookie: str | None, timeout: int = 90) -> tuple[bool, str]:
     body: dict[str, Any] = {"url": url, "download": True, "skip": skip}
     if cookie:
@@ -1219,7 +1234,7 @@ def load_async_playwright(browser_config: dict[str, Any]) -> Any | None:
         return None
 
 
-async def collect_browser_notes(config: dict[str, Any]) -> list[dict[str, Any]]:
+async def collect_browser_notes(config: dict[str, Any], conn: sqlite3.Connection) -> list[dict[str, Any]]:
     browser_config = config.get("browser", {})
     if not browser_config.get("enabled"):
         return []
@@ -1264,7 +1279,7 @@ async def collect_browser_notes(config: dict[str, Any]) -> list[dict[str, Any]]:
 
         try:
             for target in targets:
-                target_notes = await collect_target_notes(context, target, browser_config, config, extractor)
+                target_notes = await collect_target_notes(context, target, browser_config, config, extractor, conn)
                 collected.extend(target_notes)
         finally:
             await context.close()
@@ -1279,6 +1294,7 @@ async def collect_target_notes(
     browser_config: dict[str, Any],
     config: dict[str, Any],
     extractor: str,
+    conn: sqlite3.Connection,
 ) -> list[dict[str, Any]]:
     kind = target.get("kind", "profile_liked")
     url = ensure_profile_tab_url(str(target.get("url", "")), kind)
@@ -1290,18 +1306,15 @@ async def collect_target_notes(
     timeout_ms = int(browser_config.get("target_timeout_ms", 45000))
     scroll_count = int(target.get("scroll_count", browser_config.get("scroll_count", 40)))
     scroll_delay_ms = int(target.get("scroll_delay_ms", browser_config.get("scroll_delay_ms", 1200)))
+    consecutive_downloaded_stop_count = int(
+        target.get(
+            "consecutive_downloaded_stop_count",
+            browser_config.get("consecutive_downloaded_stop_count", 10),
+        )
+        or 0
+    )
 
-    page = await context.new_page()
-    try:
-        log(f"Opening target: {name}")
-        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        await page.wait_for_timeout(3000)
-        await maybe_click_profile_tab(page, target, kind)
-        await page.wait_for_timeout(2000)
-        for _ in range(scroll_count):
-            await page.mouse.wheel(0, random.randint(500, 1100))
-            await page.wait_for_timeout(scroll_delay_ms + random.randint(0, 350))
-
+    async def extract_loaded_notes() -> tuple[list[dict[str, Any]], dict[str, Any] | None, bool]:
         result = await page.evaluate(extractor, {"kind": kind, "url": url})
         raw_notes = []
         if isinstance(result, dict):
@@ -1310,8 +1323,8 @@ async def collect_target_notes(
                 raw_notes = result.get("hrefNotes") or []
 
         notes: list[dict[str, Any]] = []
-        stop_found = False
-        stop_note: dict[str, Any] | None = None
+        seen: set[str] = set()
+        consecutive_downloaded = 0
         for item in raw_notes:
             if not isinstance(item, dict) or not item.get("url"):
                 continue
@@ -1323,16 +1336,48 @@ async def collect_target_notes(
                 source=kind,
                 target_name=name,
             )
+            key = note.get("note_id") or note.get("url")
+            if not key or key in seen:
+                continue
+            seen.add(key)
             if matches_stop_title(note.get("title", ""), target, config):
                 note["stop_marker"] = True
-                stop_note = note
-                stop_found = True
-                break
+                notes.append(note)
+                return notes, note, False
             notes.append(note)
+            if consecutive_downloaded_stop_count > 0 and note_downloaded_before(conn, note):
+                consecutive_downloaded += 1
+                if consecutive_downloaded >= consecutive_downloaded_stop_count:
+                    return notes, None, True
+            else:
+                consecutive_downloaded = 0
+        return notes, None, False
+
+    page = await context.new_page()
+    try:
+        log(f"Opening target: {name}")
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        await page.wait_for_timeout(3000)
+        await maybe_click_profile_tab(page, target, kind)
+        await page.wait_for_timeout(2000)
+
+        notes: list[dict[str, Any]] = []
+        stop_note: dict[str, Any] | None = None
+        duplicate_stop = False
+        for scroll_index in range(scroll_count + 1):
+            notes, stop_note, duplicate_stop = await extract_loaded_notes()
+            if stop_note or duplicate_stop or scroll_index >= scroll_count:
+                break
+            await page.mouse.wheel(0, random.randint(500, 1100))
+            await page.wait_for_timeout(scroll_delay_ms + random.randint(0, 350))
 
         if stop_note:
-            notes.append(stop_note)
             log(f"Target {name}: stop marker found, stopped before title: {stop_note.get('title')}")
+        elif duplicate_stop:
+            log(
+                f"Target {name}: stopped after {consecutive_downloaded_stop_count} "
+                "consecutive already-downloaded note(s)."
+            )
         elif stop_required_for_target(target, config):
             log(f"Target {name}: stop marker not found this run; only downloaded newly discovered database items.")
 
@@ -1468,7 +1513,7 @@ async def run_once(config: dict[str, Any]) -> None:
         conn.commit()
 
         notes = read_queue_notes(config.get("queue_files", []))
-        notes.extend(await collect_browser_notes(config))
+        notes.extend(await collect_browser_notes(config, conn))
         notes = dedupe_notes(notes)
         for note in notes:
             record_note(conn, note)

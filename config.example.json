@@ -37,6 +37,7 @@
     "cookie_secret_key": "xhs_cookie",
     "scroll_count": 40,
     "scroll_delay_ms": 1200,
+    "consecutive_downloaded_stop_count": 10,
     "target_timeout_ms": 45000,
     "extractor": "/app/liked_extractor.js",
     "auto_install_playwright": true,
