@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   xhs-auto-worker:
-    image: ${XHS_AUTO_WORKER_IMAGE:-ghcr.io/ccawmiku/xhs-downloader-nas-worker}:${XHS_AUTO_WORKER_VERSION:-1.1.0}
+    image: ${XHS_AUTO_WORKER_IMAGE:-ghcr.io/ccawmiku/xhs-downloader-nas-worker}:${XHS_AUTO_WORKER_VERSION:-v1.3.0}
     container_name: xhs-auto-worker
     depends_on:
       - xhs-api
