@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   xhs-auto-worker:
-    image: mcr.microsoft.com/playwright/python:v1.56.0-noble
+    image: ${XHS_AUTO_WORKER_IMAGE:-ghcr.io/ccawmiku/xhs-downloader-nas-worker}:${XHS_AUTO_WORKER_VERSION:-1.1.0}
     container_name: xhs-auto-worker
     depends_on:
       - xhs-api
@@ -23,7 +23,6 @@ services:
     ports:
       - "13003:8080"
     volumes:
-      - /volume1/docker/xhs-downloader/nas-auto:/app
       - /volume1/docker/xhs-downloader/auto/config:/config
       - /volume1/docker/xhs-downloader/auto/queue:/queue
       - /volume1/docker/xhs-downloader/auto/state:/state
@@ -31,8 +30,5 @@ services:
     environment:
       TZ: Asia/Shanghai
       PYTHONUNBUFFERED: "1"
-    command: >
-      sh -c "python -c 'from playwright.async_api import async_playwright' 2>/dev/null
-      || python -m pip install --no-cache-dir playwright==1.56.0;
-      python /app/xhs_auto_worker.py --config /config/config.json"
+    command: python /app/xhs_auto_worker.py --config /config/config.json
     restart: unless-stopped

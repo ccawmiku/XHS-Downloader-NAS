@@ -16,3 +16,4 @@ processed.json
 # Local editor files
 .idea/
 .vscode/
+.env

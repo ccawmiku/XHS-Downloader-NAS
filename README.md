@@ -12,7 +12,7 @@
 - 支持网页端修改运行间隔
 - 使用 SQLite 记录已发现、已下载、失败、停止标记，避免重复下载
 - 遇到指定标题时停止继续向下同步，停止作品本身不下载
-- 免构建镜像：代码目录直接挂载进容器，适合 Container Manager
+- 推送到 GitHub 后由 GitHub Actions 自动构建 worker 镜像，镜像 tag 带版本号
 
 默认停止标题：
 
@@ -24,10 +24,13 @@
 
 ```text
 nas-auto/
-├── docker-compose.yml      # 推荐使用的双容器免构建 compose
+├── docker-compose.yml      # 使用 GHCR 镜像的双容器 compose
 ├── config.example.json     # worker 配置模板
 ├── xhs_auto_worker.py      # 自动同步 worker + 状态网页
 ├── liked_extractor.js      # 页面数据提取脚本
+├── Dockerfile           # worker 镜像构建文件
+├── VERSION              # worker 镜像默认版本 tag
+├── .github/workflows/   # GitHub Actions 自动构建
 ├── README.md
 └── .gitignore
 ```
@@ -241,16 +244,19 @@ worker 每次运行开始时，会把 Cookie 同步到 XHS-Downloader 的：
 
 ## 更新代码
 
-因为这是免构建方案，更新代码很简单：
+现在 worker 镜像由 GitHub Actions 构建。更新代码后：
 
-1. 覆盖 NAS 上的 `nas-auto` 文件夹
-2. 重启 worker
+1. 提交并 push 到 GitHub
+2. 等待 `Build worker Docker image` Actions 完成
+3. NAS 上执行：
 
 ```bash
-docker restart xhs-auto-worker
+cd /volume1/docker/xhs-downloader/nas-auto
+docker compose pull
+docker compose up -d
 ```
 
-不需要重新构建镜像。
+默认镜像是 `ghcr.io/ccawmiku/xhs-downloader-nas-worker:1.1.0`，也可以通过 `.env` 里的 `XHS_AUTO_WORKER_IMAGE` 和 `XHS_AUTO_WORKER_VERSION` 覆盖。
 
 ## 排错
 
@@ -314,3 +320,14 @@ http://你的NAS地址:13001/docs
 下载能力来自：
 
 [JoeanAmier/XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader)
+
+
+## GitHub Actions 自动构建镜像
+
+提交并 push 到 `main` / `master` 或推送 `v*` tag 后，`.github/workflows/docker-image.yml` 会自动构建 worker 镜像并推送到 GHCR：
+
+```text
+ghcr.io/ccawmiku/xhs-downloader-nas-worker:1.1.0
+```
+
+如果 GHCR package 是 private，NAS 上需要先 `docker login ghcr.io`。如果改成 public package，NAS 可以直接 pull。

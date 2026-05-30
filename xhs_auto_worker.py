@@ -113,7 +113,7 @@ def load_config(path: Path) -> dict[str, Any]:
         user_config = json.loads(path.read_text(encoding="utf-8"))
         deep_update(config, user_config)
     else:
-        log(f"Config file not found: {path}; using defaults.")
+        log(f"未找到配置文件：{path}，使用默认配置。")
     apply_saved_runtime_settings(config)
     return config
 
@@ -125,7 +125,7 @@ def apply_saved_runtime_settings(config: dict[str, Any]) -> None:
         try:
             config["run_interval_seconds"] = max(60, int(interval))
         except ValueError:
-            log(f"Invalid saved run_interval_seconds ignored: {interval}")
+            log(f"已忽略无效的运行间隔设置：{interval}")
 
 
 def load_secrets(config: dict[str, Any]) -> dict[str, str]:
@@ -135,7 +135,7 @@ def load_secrets(config: dict[str, Any]) -> dict[str, str]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        log(f"Cannot read secrets file: {error}")
+        log(f"无法读取密钥文件：{error}")
         return {}
     if not isinstance(data, dict):
         return {}
@@ -172,10 +172,10 @@ def save_web_settings(config: dict[str, Any], payload: dict[str, Any]) -> dict[s
             interval_changed = True
 
     path.write_text(json.dumps(secrets, ensure_ascii=False, indent=2), encoding="utf-8")
-    log("Saved web settings to secrets file.")
+    log("已将网页设置保存到密钥文件。")
     if interval_changed:
         SETTINGS_CHANGED_EVENT.set()
-        log(f"Updated run interval to {config['run_interval_seconds']} seconds.")
+        log(f"已将运行间隔更新为 {config['run_interval_seconds']} 秒。")
     return {
         "ok": True,
         "cookie_present": bool(secrets.get("xhs_cookie", "").strip()),
@@ -207,7 +207,7 @@ def sync_downloader_settings(config: dict[str, Any]) -> None:
 
     settings_path = Path(sync_config.get("path") or "")
     if not settings_path.exists():
-        log(f"settings.json not found, skip cookie sync: {settings_path}")
+        log(f"未找到 settings.json，跳过 Cookie 同步：{settings_path}")
         return
 
     cookie = runtime_value(
@@ -222,13 +222,13 @@ def sync_downloader_settings(config: dict[str, Any]) -> None:
         str(config.get("default_user_agent", "")),
     )
     if not cookie and not user_agent:
-        log("Cookie and User Agent are empty, skip settings sync.")
+        log("Cookie 和 User Agent 均为空，跳过设置同步。")
         return
 
     try:
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        log(f"Cannot read settings.json, skip cookie sync: {error}")
+        log(f"无法读取 settings.json，跳过 Cookie 同步：{error}")
         return
 
     changed = False
@@ -246,7 +246,7 @@ def sync_downloader_settings(config: dict[str, Any]) -> None:
         json.dumps(settings, ensure_ascii=False, indent=4),
         encoding="utf-8",
     )
-    log(f"Synced XHS_COOKIE/XHS_USER_AGENT to {settings_path}")
+    log(f"已同步 XHS_COOKIE/XHS_USER_AGENT 到 {settings_path}")
 
 
 def start_dashboard_server(config: dict[str, Any], config_path: str) -> None:
@@ -260,7 +260,7 @@ def start_dashboard_server(config: dict[str, Any], config_path: str) -> None:
     server = ThreadingHTTPServer((host, port), handler)
     thread = Thread(target=server.serve_forever, name="dashboard-server", daemon=True)
     thread.start()
-    log(f"Dashboard is listening on http://{host}:{port}")
+    log(f"状态面板已启动：http://{host}:{port}")
 
 
 def make_dashboard_handler(config: dict[str, Any], config_path: str) -> type[BaseHTTPRequestHandler]:
@@ -284,7 +284,7 @@ def make_dashboard_handler(config: dict[str, Any], config_path: str) -> type[Bas
                     already_running = bool(RUNTIME.get("is_running"))
                 if not already_running:
                     RUN_NOW_EVENT.set()
-                    log("Manual run requested from dashboard.")
+                    log("状态面板请求立即运行。")
                 self.send_json({"ok": True, "already_running": already_running})
             elif path == "/api/settings":
                 try:
@@ -897,7 +897,7 @@ def migrate_legacy_processed_json(conn: sqlite3.Connection, path: str | None) ->
     try:
         data = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        log(f"Legacy processed file exists but cannot be migrated: {source}")
+        log(f"发现旧版 processed 文件，但无法迁移：{source}")
         return
     if not isinstance(data, list):
         return
@@ -914,7 +914,7 @@ def migrate_legacy_processed_json(conn: sqlite3.Connection, path: str | None) ->
         )
     conn.commit()
     marker.write_text(timestamp, encoding="utf-8")
-    log(f"Migrated {len(data)} legacy processed record(s) into SQLite.")
+    log(f"已迁移 {len(data)} 条旧版 processed 记录到 SQLite。")
 
 
 def normalize_title(title: Any) -> str:
@@ -1187,11 +1187,11 @@ def load_async_playwright(browser_config: dict[str, Any]) -> Any | None:
 
         return async_playwright
     except ImportError as error:
-        log(f"Playwright import failed: {error}")
-        log(f"Python executable: {sys.executable}")
+        log(f"Playwright 导入失败：{error}")
+        log(f"Python 可执行文件：{sys.executable}")
 
     if not browser_config.get("auto_install_playwright", False):
-        log("Browser mode requires Playwright. Rebuild xhs-auto-worker or disable browser.enabled.")
+        log("浏览器模式需要 Playwright。请等 GitHub Actions 构建新镜像，或关闭 browser.enabled。")
         return None
 
     version = str(browser_config.get("playwright_version", "1.56.0"))
@@ -1203,7 +1203,7 @@ def load_async_playwright(browser_config: dict[str, Any]) -> Any | None:
         "--no-cache-dir",
         f"playwright=={version}",
     ]
-    log(f"Attempting to install Python Playwright {version} inside the worker container.")
+    log(f"正在容器内尝试安装 Python Playwright {version}。")
     try:
         result = subprocess.run(
             command,
@@ -1213,24 +1213,24 @@ def load_async_playwright(browser_config: dict[str, Any]) -> Any | None:
             timeout=300,
         )
     except Exception as error:
-        log(f"Automatic Playwright install failed before pip completed: {error}")
+        log(f"自动安装 Playwright 时 pip 未完成即失败：{error}")
         return None
 
     if result.returncode != 0:
-        log(f"Automatic Playwright install failed with exit code {result.returncode}.")
+        log(f"自动安装 Playwright 失败，退出码：{result.returncode}。")
         if result.stdout.strip():
-            log(f"pip stdout: {result.stdout.strip()[-1200:]}")
+            log(f"pip 标准输出：{result.stdout.strip()[-1200:]}")
         if result.stderr.strip():
-            log(f"pip stderr: {result.stderr.strip()[-1200:]}")
+            log(f"pip 错误输出：{result.stderr.strip()[-1200:]}")
         return None
 
-    log("Automatic Playwright install completed.")
+    log("Playwright 自动安装完成。")
     try:
         from playwright.async_api import async_playwright
 
         return async_playwright
     except ImportError as error:
-        log(f"Playwright still cannot be imported after install: {error}")
+        log(f"安装后仍无法导入 Playwright：{error}")
         return None
 
 
@@ -1241,7 +1241,7 @@ async def collect_browser_notes(config: dict[str, Any], conn: sqlite3.Connection
 
     async_playwright = load_async_playwright(browser_config)
     if async_playwright is None:
-        log("Browser mode is unavailable because Python Playwright is not installed.")
+        log("未安装 Python Playwright，浏览器模式不可用。")
         return []
 
     user_agent = runtime_value(
@@ -1257,7 +1257,7 @@ async def collect_browser_notes(config: dict[str, Any], conn: sqlite3.Connection
     )
     targets = browser_config.get("targets", [])
     if not targets:
-        log("Browser mode is enabled, but browser.targets is empty.")
+        log("浏览器模式已启用，但 browser.targets 为空。")
         return []
 
     extractor = load_extractor_script(config)
@@ -1275,7 +1275,7 @@ async def collect_browser_notes(config: dict[str, Any], conn: sqlite3.Connection
         if cookie:
             await context.add_cookies(cookie_header_to_playwright(cookie))
         else:
-            log("Cookie is empty. Liked-page collection usually needs a logged-in cookie.")
+            log("Cookie 为空；采集点赞页通常需要已登录的 Cookie。")
 
         try:
             for target in targets:
@@ -1355,7 +1355,7 @@ async def collect_target_notes(
 
     page = await context.new_page()
     try:
-        log(f"Opening target: {name}")
+        log(f"正在打开目标：{name}")
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         await page.wait_for_timeout(3000)
         await maybe_click_profile_tab(page, target, kind)
@@ -1372,14 +1372,13 @@ async def collect_target_notes(
             await page.wait_for_timeout(scroll_delay_ms + random.randint(0, 350))
 
         if stop_note:
-            log(f"Target {name}: stop marker found, stopped before title: {stop_note.get('title')}")
+            log(f"目标 {name}：已找到停止标记，停止于标题之前：{stop_note.get('title')}")
         elif duplicate_stop:
             log(
-                f"Target {name}: stopped after {consecutive_downloaded_stop_count} "
-                "consecutive already-downloaded note(s)."
+                f"目标 {name}：连续 {consecutive_downloaded_stop_count} 条作品均已下载，停止继续滚动。"
             )
         elif stop_required_for_target(target, config):
-            log(f"Target {name}: stop marker not found this run; only downloaded newly discovered database items.")
+            log(f"目标 {name}：本次未找到停止标记，仅下载数据库中新发现的作品。")
 
         downloadable_count = sum(1 for note in notes if not note.get("stop_marker"))
         if max_links > 0:
@@ -1394,10 +1393,10 @@ async def collect_target_notes(
             notes = keep
             downloadable_count = kept_downloadable
 
-        log(f"Target {name}: collected {downloadable_count} downloadable note(s).")
+        log(f"目标 {name}：采集到 {downloadable_count} 条可下载作品。")
         return notes
     except Exception as error:
-        log(f"Target {name}: failed to collect liked notes: {error}")
+        log(f"目标 {name}：采集点赞作品失败：{error}")
         return []
     finally:
         await page.close()
@@ -1425,7 +1424,7 @@ async def maybe_click_profile_tab(page: Any, target: dict[str, Any], kind: str) 
             count = await locator.count()
             if count > 0:
                 await locator.first.click(timeout=3000)
-                log(f"Clicked profile tab: {label}")
+                log(f"已点击主页标签：{label}")
                 return
         except Exception:
             continue
@@ -1521,7 +1520,7 @@ async def run_once(config: dict[str, Any]) -> None:
 
         pending = get_pending_notes(conn, config)
         stop_marker_found = any(note.get("stop_marker") for note in notes)
-        log(f"Discovered {len(notes)} note(s), {len(pending)} pending download(s).")
+        log(f"本次发现 {len(notes)} 条作品，待下载 {len(pending)} 条。")
 
         api_url = str(config.get("api_url", DEFAULT_CONFIG["api_url"]))
         api_skip = bool(config.get("api_skip", True))
@@ -1536,16 +1535,16 @@ async def run_once(config: dict[str, Any]) -> None:
         for index, row in enumerate(pending, start=1):
             note_id = row["note_id"]
             title = row["title"] or ""
-            log(f"Submitting [{index}/{len(pending)}] {note_id} {title}")
+            log(f"正在提交下载 [{index}/{len(pending)}] {note_id} {title}")
             ok, message = post_download(api_url, row["url"], skip=api_skip, cookie=api_cookie)
             if ok:
                 mark_downloaded(conn, note_id)
                 downloaded_count += 1
-                log(f"OK: {note_id}")
+                log(f"下载提交成功：{note_id}")
             else:
                 mark_failed(conn, note_id, message)
                 failed_count += 1
-                log(f"FAILED: {note_id}; {message}")
+                log(f"下载提交失败：{note_id}；{message}")
             conn.commit()
             if index < len(pending):
                 time.sleep(delay + random.random() * jitter)
@@ -1576,7 +1575,7 @@ async def run_once(config: dict[str, Any]) -> None:
         error_text = str(error)
         with RUNTIME_LOCK:
             RUNTIME["last_error"] = error_text
-        log(f"Run failed: {error_text}")
+        log(f"本轮运行失败：{error_text}")
         if conn is not None and run_id is not None:
             conn.execute(
                 "UPDATE runs SET finished_at = ?, message = ? WHERE id = ?",
@@ -1609,14 +1608,14 @@ async def main() -> int:
         next_run_ts = time.time() + interval
         with RUNTIME_LOCK:
             RUNTIME["next_run_at"] = datetime.fromtimestamp(next_run_ts, timezone.utc).isoformat(timespec="seconds")
-        log(f"Sleeping {interval} seconds.")
+        log(f"休眠 {interval} 秒，等待下次运行。")
         while True:
             remaining = next_run_ts - time.time()
             if remaining <= 0:
                 break
             if RUN_NOW_EVENT.wait(timeout=min(remaining, 5)):
                 RUN_NOW_EVENT.clear()
-                log("Starting manual run.")
+                log("开始执行手动运行。")
                 break
             if SETTINGS_CHANGED_EVENT.is_set():
                 SETTINGS_CHANGED_EVENT.clear()
@@ -1624,7 +1623,7 @@ async def main() -> int:
                 next_run_ts = time.time() + interval
                 with RUNTIME_LOCK:
                     RUNTIME["next_run_at"] = datetime.fromtimestamp(next_run_ts, timezone.utc).isoformat(timespec="seconds")
-                log(f"Rescheduled next run after interval change: {interval} seconds.")
+                log(f"运行间隔已变化，已按 {interval} 秒重新安排下次运行。")
 
 
 if __name__ == "__main__":
