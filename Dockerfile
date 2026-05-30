@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/playwright/python:v1.56.0-noble
 
-ARG APP_VERSION=v1.3.0
+ARG APP_VERSION=v1.3.1
 ENV APP_VERSION=${APP_VERSION}
 ENV PYTHONUNBUFFERED=1
 ENV TZ=Asia/Shanghai

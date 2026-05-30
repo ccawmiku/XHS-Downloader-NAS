@@ -126,6 +126,13 @@ def apply_saved_runtime_settings(config: dict[str, Any]) -> None:
             config["run_interval_seconds"] = max(60, int(interval))
         except ValueError:
             log(f"已忽略无效的运行间隔设置：{interval}")
+    duplicate_stop_count = secrets.get("consecutive_downloaded_stop_count")
+    if duplicate_stop_count not in (None, ""):
+        try:
+            browser_config = config.setdefault("browser", {})
+            browser_config["consecutive_downloaded_stop_count"] = max(0, int(duplicate_stop_count))
+        except ValueError:
+            log(f"已忽略无效的连续已下载停止阈值：{duplicate_stop_count}")
 
 
 def load_secrets(config: dict[str, Any]) -> dict[str, str]:
@@ -157,6 +164,7 @@ def save_web_settings(config: dict[str, Any], payload: dict[str, Any]) -> dict[s
         secrets.pop("xhs_cookie", None)
 
     interval_changed = False
+    duplicate_stop_changed = False
     if payload.get("run_interval_seconds") not in (None, ""):
         try:
             interval = int(payload.get("run_interval_seconds"))
@@ -171,16 +179,34 @@ def save_web_settings(config: dict[str, Any], payload: dict[str, Any]) -> dict[s
             config["run_interval_seconds"] = interval
             interval_changed = True
 
+    if payload.get("consecutive_downloaded_stop_count") not in (None, ""):
+        try:
+            duplicate_stop_count = int(payload.get("consecutive_downloaded_stop_count"))
+        except (TypeError, ValueError) as error:
+            raise ValueError("连续已下载停止阈值必须是数字") from error
+        if duplicate_stop_count < 0:
+            raise ValueError("连续已下载停止阈值不能小于 0")
+        if duplicate_stop_count > 1000:
+            raise ValueError("连续已下载停止阈值不能超过 1000")
+        secrets["consecutive_downloaded_stop_count"] = str(duplicate_stop_count)
+        browser_config = config.setdefault("browser", {})
+        if int(browser_config.get("consecutive_downloaded_stop_count", 0) or 0) != duplicate_stop_count:
+            browser_config["consecutive_downloaded_stop_count"] = duplicate_stop_count
+            duplicate_stop_changed = True
+
     path.write_text(json.dumps(secrets, ensure_ascii=False, indent=2), encoding="utf-8")
     log("已将网页设置保存到密钥文件。")
     if interval_changed:
         SETTINGS_CHANGED_EVENT.set()
         log(f"已将运行间隔更新为 {config['run_interval_seconds']} 秒。")
+    if duplicate_stop_changed:
+        log(f"已将连续已下载停止阈值更新为 {config['browser']['consecutive_downloaded_stop_count']} 条。")
     return {
         "ok": True,
         "cookie_present": bool(secrets.get("xhs_cookie", "").strip()),
         "user_agent_present": bool(secrets.get("xhs_user_agent", "").strip()),
         "run_interval_seconds": config.get("run_interval_seconds"),
+        "consecutive_downloaded_stop_count": config.get("browser", {}).get("consecutive_downloaded_stop_count"),
     }
 
 
@@ -419,6 +445,7 @@ def collect_dashboard_status(config: dict[str, Any], config_path: str) -> dict[s
             "browser_enabled": browser_config.get("enabled"),
             "headless": browser_config.get("headless"),
             "scroll_count": browser_config.get("scroll_count"),
+            "consecutive_downloaded_stop_count": browser_config.get("consecutive_downloaded_stop_count"),
             "settings_sync_enabled": sync_config.get("enabled"),
             "settings_path": sync_config.get("path"),
             "targets": [
@@ -661,6 +688,8 @@ DASHBOARD_HTML = r"""<!doctype html>
         <input id="userAgentInput" type="text" placeholder="浏览器 User Agent">
         <label class="muted" for="intervalInput">运行间隔（秒）</label>
         <input id="intervalInput" type="number" min="60" step="60" placeholder="例如 1800 表示 30 分钟">
+        <label class="muted" for="duplicateStopInput">连续已下载自动停止（条，0 表示关闭）</label>
+        <input id="duplicateStopInput" type="number" min="0" max="1000" step="1" placeholder="例如 10 表示连续 10 条已下载就停止滚动">
         <div class="toolbar formbar">
           <button id="saveSettings" type="button">保存设置</button>
           <span class="muted" id="saveMessage"></span>
@@ -724,6 +753,9 @@ DASHBOARD_HTML = r"""<!doctype html>
       if (document.activeElement !== $("intervalInput")) {
         $("intervalInput").value = cfg.run_interval_seconds || "";
       }
+      if (document.activeElement !== $("duplicateStopInput")) {
+        $("duplicateStopInput").value = cfg.consecutive_downloaded_stop_count ?? "";
+      }
       $("lastStart").textContent = fmtTime(runtime.last_run_started_at);
       $("lastFinish").textContent = fmtTime(runtime.last_run_finished_at);
       $("nextRun").textContent = fmtTime(runtime.next_run_at);
@@ -755,6 +787,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         ["同步 settings", cfg.settings_sync_enabled ? `开启：${cfg.settings_path}` : "关闭"],
         ["无头浏览器", cfg.browser_enabled ? "开启" : "关闭"],
         ["滚动次数", cfg.scroll_count],
+        ["连续已下载自动停止", Number(cfg.consecutive_downloaded_stop_count || 0) > 0 ? `${cfg.consecutive_downloaded_stop_count} 条` : "关闭"],
         ["请求间隔", `${cfg.request_delay_seconds}s + 随机 ${cfg.jitter_seconds}s`],
         ["目标页面", (cfg.targets || []).map(t => `${t.name || ""} ${t.kind || ""} ${t.url || ""}`).join("\n") || "未配置"],
         ["最近错误", runtime.last_error || "无"],
@@ -805,7 +838,8 @@ DASHBOARD_HTML = r"""<!doctype html>
         body: JSON.stringify({
           cookie: $("cookieInput").value,
           user_agent: $("userAgentInput").value,
-          run_interval_seconds: $("intervalInput").value
+          run_interval_seconds: $("intervalInput").value,
+          consecutive_downloaded_stop_count: $("duplicateStopInput").value
         })
       });
       const result = await response.json();

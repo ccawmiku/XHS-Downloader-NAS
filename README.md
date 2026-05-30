@@ -256,7 +256,7 @@ docker compose pull
 docker compose up -d
 ```
 
-默认镜像是 `ghcr.io/ccawmiku/xhs-downloader-nas-worker:v1.3.0`，也可以通过 `.env` 里的 `XHS_AUTO_WORKER_IMAGE` 和 `XHS_AUTO_WORKER_VERSION` 覆盖。
+默认镜像是 `ghcr.io/ccawmiku/xhs-downloader-nas-worker:v1.3.1`，也可以通过 `.env` 里的 `XHS_AUTO_WORKER_IMAGE` 和 `XHS_AUTO_WORKER_VERSION` 覆盖。
 
 ## 排错
 
@@ -327,7 +327,7 @@ http://你的NAS地址:13001/docs
 提交并 push 到 `main` / `master` 或推送 `v*` tag 后，`.github/workflows/docker-image.yml` 会自动构建 worker 镜像并推送到 GHCR：
 
 ```text
-ghcr.io/ccawmiku/xhs-downloader-nas-worker:v1.3.0
+ghcr.io/ccawmiku/xhs-downloader-nas-worker:v1.3.1
 ```
 
 如果 GHCR package 是 private，NAS 上需要先 `docker login ghcr.io`。如果改成 public package，NAS 可以直接 pull。
