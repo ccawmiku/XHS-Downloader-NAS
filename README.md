@@ -1,8 +1,6 @@
-# XHS Liked Notes Auto Downloader for NAS
+# 小红书点赞作品 NAS 自动下载器
 
-基于 [JoeanAmier/XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader) 的 NAS 自动化辅助工具。
-
-它会在 NAS 端定时打开小红书点赞页，提取新点赞作品链接，并调用本地 XHS-Downloader API 下载。适合群晖 Container Manager / Docker Compose 使用。
+基于 [JoeanAmier/XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader) 的 NAS 自动化辅助工具。它会定时读取小红书点赞页、提取新增作品链接，再调用本地下载 API；适合通过群晖 Container Manager 或 Docker Compose 长期运行。
 
 ## 功能
 
